@@ -1,3 +1,38 @@
+/**************************************************************************************************
+*                                                                                                 *
+* This file is part of BLASFEO.                                                                   *
+*                                                                                                 *
+* BLASFEO -- BLAS For Embedded Optimization.                                                      *
+* Copyright (C) 2019 by Gianluca Frison.                                                          *
+* Developed at IMTEK (University of Freiburg) under the supervision of Moritz Diehl.              *
+* All rights reserved.                                                                            *
+*                                                                                                 *
+* The 2-Clause BSD License                                                                        *
+*                                                                                                 *
+* Redistribution and use in source and binary forms, with or without                              *
+* modification, are permitted provided that the following conditions are met:                     *
+*                                                                                                 *
+* 1. Redistributions of source code must retain the above copyright notice, this                  *
+*    list of conditions and the following disclaimer.                                             *
+* 2. Redistributions in binary form must reproduce the above copyright notice,                    *
+*    this list of conditions and the following disclaimer in the documentation                    *
+*    and/or other materials provided with the distribution.                                       *
+*                                                                                                 *
+* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND                 *
+* ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED                   *
+* WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE                          *
+* DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR                 *
+* ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES                  *
+* (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;                    *
+* LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND                     *
+* ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT                      *
+* (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS                   *
+* SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.                                    *
+*                                                                                                 *
+* Author: Gianluca Frison, gianluca.frison (at) imtek.uni-freiburg.de                             *
+*                                                                                                 *
+**************************************************************************************************/
+
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -171,5 +206,124 @@ int main()
     v_free_align(sE_mem);
     free(lq_work);
 
+    /* Dense Lower-Upper Factorization */
+    n = 16;
+
+    double *F; d_zeros(&F, n, n);
+    for(ii=0; ii<n*n; ii++)
+        F[ii] = ii;
+    //d_print_mat(n, n, F, n);
+
+    // symmetric positive definite matrix, at the same time identity matrix
+    double *G; d_zeros(&G, n, n);
+    for(ii=0; ii<n; ii++)
+        G[ii*(n+1)] = 1.0;
+	// d_print_mat(n, n, G, n);
+
+    // identity
+    double *I; d_zeros(&I, n, n);
+    for(ii=0; ii<n; ii++) I[ii*(n+1)] = 1.0;
+    //d_print_mat(n, n, I, n);
+
+    // result matrix
+    double *H; d_zeros(&H, n, n);
+    // d_print_mat(n, n, H, n);
+
+    // permutation indeces
+    int *ipiv; int_zeros(&ipiv, n, 1);
+
+    /*
+     * matrices in matrix struct format
+     */
+
+    // work space enough for 6 matrix structs for size n times n
+    int size_strmat = 6*blasfeo_memsize_dmat(n, n);
+    void *memory_strmat; v_zeros_align(&memory_strmat, size_strmat);
+    char *ptr_memory_strmat = (char *) memory_strmat;
+
+    struct blasfeo_dmat sF;
+    //blasfeo_allocate_dmat(n, n, &sF);
+    blasfeo_create_dmat(n, n, &sF, ptr_memory_strmat);
+    ptr_memory_strmat += sF.memsize;
+    // convert from column major matrix to strmat
+    blasfeo_pack_dmat(n, n, F, n, &sF, 0, 0);
+    printf("\nF = \n");
+    blasfeo_print_dmat(n, n, &sF, 0, 0);
+
+    struct blasfeo_dmat sG;
+    //blasfeo_allocate_dmat(n, n, &sG);
+    blasfeo_create_dmat(n, n, &sG, ptr_memory_strmat);
+    ptr_memory_strmat += sG.memsize;
+    // convert from column major matrix to strmat
+    blasfeo_pack_dmat(n, n, G, n, &sG, 0, 0);
+    printf("\nG = \n");
+    blasfeo_print_dmat(n, n, &sG, 0, 0);
+
+    struct blasfeo_dmat sI;
+    //	blasfeo_allocate_dmat(n, n, &sI);
+    blasfeo_create_dmat(n, n, &sI, ptr_memory_strmat);
+    ptr_memory_strmat += sI.memsize;
+    // convert from column major matrix to strmat
+
+    struct blasfeo_dmat sH;
+    //blasfeo_allocate_dmat(n, n, &sH);
+    blasfeo_create_dmat(n, n, &sH, ptr_memory_strmat);
+    ptr_memory_strmat += sH.memsize;
+
+    struct blasfeo_dmat sLU;
+    //blasfeo_allocate_dmat(n, n, &sD);
+    blasfeo_create_dmat(n, n, &sLU, ptr_memory_strmat);
+    ptr_memory_strmat += sLU.memsize;
+
+    struct blasfeo_dmat sLUt;
+    //blasfeo_allocate_dmat(n, n, &sD);
+    blasfeo_create_dmat(n, n, &sLUt, ptr_memory_strmat);
+    ptr_memory_strmat += sLUt.memsize;
+
+    blasfeo_dgemm_nt(n, n, n, 1.0, &sF, 0, 0, &sF, 0, 0, 1.0, &sG, 0, 0, &sH, 0, 0);
+    printf("\nG+F*F' = \n");
+    blasfeo_print_dmat(n, n, &sH, 0, 0);
+
+    //blasfeo_dgetrf_nopivot(n, n, &sH, 0, 0, &sH, 0, 0);
+    blasfeo_dgetrf_rp(n, n, &sH, 0, 0, &sLU, 0, 0, ipiv);
+    printf("\nLU = \n");
+    blasfeo_print_dmat(n, n, &sLU, 0, 0);
+    printf("\nipiv = \n");
+    int_print_mat(1, n, ipiv, 1);
+
+
+    blasfeo_dgetr(n, n, &sLU, 0, 0, &sLUt, 0, 0);
+
+    blasfeo_pack_dmat(n, n, I, n, &sI, 0, 0);
+    printf("\nI = \n");
+    blasfeo_print_dmat(n, n, &sI, 0, 0);
+
+    blasfeo_dtrsm_llnn(n, n, 1.0, &sLUt, 0, 0, &sI, 0, 0, &sH, 0, 0);
+    printf("\ninv(U^T) = \n");
+    blasfeo_print_dmat(n, n, &sH, 0, 0);
+
+    blasfeo_dtrsm_lunu(n, n, 1.0, &sLUt, 0, 0, &sH, 0, 0, &sH, 0, 0);
+    printf("\n(inv(L^T)*inv(U^T)) = \n");
+    blasfeo_print_dmat(n, n, &sH, 0, 0);
+
+    blasfeo_drowpei(n, ipiv, &sH);
+    printf("\nperm(inv(L^T)*inv(U^T)) = \n");
+    blasfeo_print_dmat(n, n, &sH, 0, 0);
+
+    // convert from strmat to column major matrix
+    blasfeo_unpack_dmat(n, n, &sH, 0, 0, H, n);
+
+    // print matrix in column-major format
+    printf("\ninv(F) = \n");
+    d_print_mat(n, n, H, n);
+
+    d_free(F);
+    d_free(G);
+    d_free(H);
+    d_free(I);
+    int_free(ipiv);
+    v_free_align(memory_strmat);
+
     return 0;
 }
+
