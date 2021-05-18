@@ -279,7 +279,8 @@ int main()
     blasfeo_unpack_dmat(n, n, &sH, 0, 0, H, n);
 
     // print matrix in column-major format
-    printf("\ninv(F) = \n");
+    // H <- G + F*F'
+    printf("\ninv(H) = \n");
     d_print_mat(n, n, H, n);
 
     d_free(F);
