@@ -25,6 +25,8 @@ int main()
         exit(3);
     }
 
+    /* ----------- Basic Matrix Calculations and Different Matrices Declarations with Memory Allocation  ----------- */
+
     int ii;  // loop index
 
     int n = 5;  // matrix size
@@ -40,7 +42,6 @@ int main()
     void *B_mem_align;
     v_zeros_align(&B_mem_align, B_size);          // allocate memory needed by B
     blasfeo_create_dmat(m, m, &sB, B_mem_align);  // assign aligned memory to struct
-
 
     // C
     struct blasfeo_dmat sC;                                                  // matrix structure
@@ -85,7 +86,9 @@ int main()
     v_free_align(B_mem_align);
     free(C_mem);
 
-    /* LQ Factorization of a matrix */
+    /* -------------------------------------------------------------------------------------------------------------- */
+
+    /* ---------------------------------------- LQ Factorization of a matrix ----------------------------------------*/
     m = 13;
     n = 12;
 
@@ -171,7 +174,9 @@ int main()
     v_free_align(sE_mem);
     free(lq_work);
 
-    /* Dense Lower-Upper Factorization */
+    /* -------------------------------------------------------------------------------------------------------------- */
+
+    /* --------------------------------------- Dense Lower-Upper Factorization -------------------------------------- */
     n = 16;
 
     double *F; d_zeros(&F, n, n);
@@ -290,6 +295,116 @@ int main()
     int_free(ipiv);
     v_free_align(memory_strmat);
 
+    /* --------------------------------------- float Lower-Upper Factorization -------------------------------------- */
+    n = 16;
+
+    //
+    // matrices in column-major format
+    //
+    float *K; s_zeros(&K, n, n);
+    for(ii=0; ii<n*n; ii++)
+        K[ii] = ii;
+    //s_print_mat(n, n, K, n);
+
+    // spd matrix
+    float *M; s_zeros(&M, n, n);
+    for(ii=0; ii<n; ii++)
+        M[ii*(n+1)] = 1.0;
+    //s_print_mat(n, n, M, n);
+
+    // identity
+    float *I_s; s_zeros(&I_s, n, n);
+    for(ii=0; ii<n; ii++)
+        I_s[ii*(n+1)] = 1.0;
+    //s_print_mat(n, n, I_s, n);
+
+    // result matrix
+    float *N; s_zeros(&N, n, n);
+    //s_print_mat(n, n, N, n);
+
+    // permutation indeces
+    int *ipiv_s; int_zeros(&ipiv_s, n, 1);
+
+    // work space enough for 5 matrix structs for size n times n
+    int size_strmat_s = 5 * blasfeo_memsize_smat(n, n);
+    void *memory_strmat_s; v_zeros_align(&memory_strmat_s, size_strmat_s);
+    char *ptr_memory_strmat_s = (char *) memory_strmat_s;
+
+    struct blasfeo_smat sK;
+    //blasfeo_allocate_smat(n, n, &sA);
+    blasfeo_create_smat(n, n, &sK, ptr_memory_strmat_s);
+    ptr_memory_strmat_s += sK.memsize;
+    // convert from column major matrix to strmat
+    blasfeo_pack_smat(n, n, K, n, &sK, 0, 0);
+    printf("\nK = \n");
+    blasfeo_print_smat(n, n, &sK, 0, 0);
+
+    struct blasfeo_smat sM;
+    //blasfeo_allocate_smat(n, n, &sM);
+    blasfeo_create_smat(n, n, &sM, ptr_memory_strmat_s);
+    ptr_memory_strmat_s += sL.memsize;
+    // convert from column major matrix to strmat
+    blasfeo_pack_smat(n, n, M, n, &sM, 0, 0);
+    printf("\nM = \n");
+    blasfeo_print_smat(n, n, &sM, 0, 0);
+
+    struct blasfeo_smat sI_s;
+    //blasfeo_allocate_smat(n, n, &sI_s);
+    blasfeo_create_smat(n, n, &sI_s, ptr_memory_strmat);
+    ptr_memory_strmat_s += sI_s.memsize;
+    // convert from column major matrix to strmat
+
+    struct blasfeo_smat sN;
+    //blasfeo_allocate_smat(n, n, &sN);
+    blasfeo_create_smat(n, n, &sN, ptr_memory_strmat_s);
+    ptr_memory_strmat_s += sN.memsize;
+
+    struct blasfeo_smat sLU_s;
+    //blasfeo_allocate_smat(n, n, &sLU_s);
+    blasfeo_create_smat(n, n, &sLU_s, ptr_memory_strmat_s);
+    ptr_memory_strmat_s += sLU_s.memsize;
+
+    blasfeo_sgemm_nt(n, n, n, 1.0, &sK, 0, 0, &sK, 0, 0, 1.0, &sM, 0, 0, &sN, 0, 0);
+    printf("\nM+K*K' = \n");
+    blasfeo_print_smat(n, n, &sN, 0, 0);
+
+    //	blasfeo_sgetrf_nopivot(n, n, &sD, 0, 0, &sD, 0, 0);
+    blasfeo_sgetrf_rp(n, n, &sN, 0, 0, &sLU_s, 0, 0, ipiv_s);
+    printf("\nLU = \n");
+    blasfeo_print_smat(n, n, &sLU_s, 0, 0);
+    printf("\nipiv = \n");
+    int_print_mat(1, n, ipiv_s, 1);
+
+    blasfeo_pack_tran_smat(n, n, I_s, n, &sI_s, 0, 0);
+    printf("\nI' = \n");
+    blasfeo_print_smat(n, n, &sI_s, 0, 0);
+
+    blasfeo_scolpe(n, ipiv_s, &sM);
+    printf("\nperm(I') = \n");
+    blasfeo_print_smat(n, n, &sM, 0, 0);
+
+    blasfeo_strsm_rltu(n, n, 1.0, &sLU_s, 0, 0, &sM, 0, 0, &sN, 0, 0);
+    printf("\nperm(inv(L')) = \n");
+    blasfeo_print_smat(n, n, &sN, 0, 0);
+    blasfeo_strsm_rutn(n, n, 1.0, &sLU_s, 0, 0, &sN, 0, 0, &sN, 0, 0);
+    printf("\ninv(N') = \n");
+    blasfeo_print_smat(n, n, &sN, 0, 0);
+
+    // convert from strmat to column major matrix
+    blasfeo_unpack_tran_smat(n, n, &sN, 0, 0, N, n);
+
+    // print matrix in column-major format
+    printf("\ninv(N) = \n");
+    s_print_mat(n, n, N, n);
+
+    /* free memeory */
+    s_free(K);
+    s_free(M);
+    s_free(N);
+    s_free(I_s);
+    v_free_align(memory_strmat_s);
+
+    /* -------------------------------------------------------------------------------------------------------------- */
     return 0;
 }
 
